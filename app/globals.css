@@ -1,69 +1,38 @@
 /* styles/globals.css */
-@import url('https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Elsie:wght@400;900&display=swap');
 
 body {
   margin: 0;
-  font-family: 'Roboto', sans-serif;
-  background-color: #FFA2BB;
-}
-
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Pacifico', cursive;
-  margin: 0;
-}
-
-button {
-  font-family: 'Roboto', sans-serif;
-  font-size: 1rem;
-}
-
-input {
-  font-family: 'Roboto', sans-serif;
-}
-
-button:hover {
-  background-color: #D14469;
+  font-family: 'Elsie', cursive;
+  font-weight: 900;
+  background-color: #FFD1DC; /* Baby pink background */
+  color: #BC1456; /* Girly pops color */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  text-align: center;
 }
 
 .modal-box {
   background-color: #FFF;
-  border: 2px solid #E35B7B;
+  border: 2px solid #D14469; /* Dark pink outline */
   box-shadow: 24px;
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-input, textarea {
-  padding: 10px;
-  border: 1px solid #E35B7B;
-  border-radius: 4px;
-  font-family: 'Merriweather', serif;
-  width: 100%;
-}
-
-.container {
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  justify-content: center;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-}
-
-.header {
-  font-size: 36px;
-  font-weight: bold;
-  text-align: center;
+  border-radius: 20px; /* Cute curvy boxes */
 }
 
 .inventory-box {
-  width: 800px;
+  width: 80%;
+  max-width: 800px;
   padding: 20px;
-  background-color: #FFF;
-  border: 1px solid #E35B7B;
+  background-color: #FFD1DC; /* Same pink as background */
+  border: 2px solid #D14469; /* Dark pink outline */
+  border-radius: 20px; /* Cute curvy boxes */
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
 .inventory-item {
@@ -71,9 +40,38 @@ input, textarea {
   justify-content: space-between;
   align-items: center;
   padding: 10px;
-  border-bottom: 1px solid #E35B7B;
+  border-bottom: 2px solid #D14469; /* Dark pink outline */
+  font-family: 'Elsie', cursive;
 }
 
 .inventory-item:last-child {
   border-bottom: none;
+}
+
+button, .MuiButton-root {
+  background-color: #FF69B4 !important; /* Pink buttons */
+  color: white !important;
+  border: 2px solid #D14469 !important; /* Dark pink outline */
+  border-radius: 20px !important; /* Cute curvy boxes */
+  font-family: 'Elsie', cursive !important;
+  font-weight: 900 !important;
+}
+
+button:hover, .MuiButton-root:hover {
+  background-color: #FF85A2 !important; /* Slightly lighter pink on hover */
+}
+
+input, .MuiInputBase-root, .MuiOutlinedInput-root {
+  font-family: 'Elsie', cursive !important;
+  font-weight: 900 !important;
+  padding: 10px !important;
+  border: 2px solid #D14469 !important; /* Dark pink outline */
+  border-radius: 20px !important; /* Cute curvy boxes */
+  margin-bottom: 10px !important;
+}
+
+.MuiPaper-root {
+  background-color: #FFD1DC !important; /* Same pink as background */
+  border-radius: 20px !important; /* Cute curvy boxes */
+  border: 2px solid #D14469 !important; /* Dark pink outline */
 }

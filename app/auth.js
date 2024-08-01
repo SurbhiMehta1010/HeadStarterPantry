@@ -3,7 +3,47 @@
 import { useState } from 'react';
 import { auth } from '@/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { Box, TextField, Button, Typography, Snackbar, Alert } from '@mui/material';
+import { Box, TextField, Button, Typography, Snackbar, Alert, Stack } from '@mui/material';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { CssBaseline } from '@mui/material';
+
+const theme = createTheme({
+  typography: {
+    fontFamily: 'Raleway, sans-serif',
+  },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#D14469',
+          color: 'white',
+          border: '2px solid #D14469',
+          borderRadius: '20px',
+          fontWeight: 700,
+          '&:hover': {
+            backgroundColor: '#FF85A2',
+          },
+        },
+      },
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          '& .MuiOutlinedInput-root': {
+            borderRadius: '20px',
+            border: '2px solid #D14469',
+            '& fieldset': {
+              borderColor: '#D14469',
+            },
+            '&:hover fieldset': {
+              borderColor: '#D14469',
+            },
+          },
+        },
+      },
+    },
+  },
+});
 
 export default function Auth({ onUserChange }) {
   const [email, setEmail] = useState('');
@@ -66,42 +106,49 @@ export default function Auth({ onUserChange }) {
   };
 
   return (
-    <Box display="flex" flexDirection="column" alignItems="center">
-      {user ? (
-        <Box display="flex" flexDirection="column" alignItems="center">
-          <Typography variant="h6">Welcome, {user.email}</Typography>
-          <Button onClick={handleLogout}>Logout</Button>
-        </Box>
-      ) : (
-        <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
-          <TextField
-            label="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            fullWidth
-          />
-          <TextField
-            label="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            fullWidth
-          />
-          <Box display="flex" gap={2}>
-            <Button variant="contained" onClick={handleLogin}>
-              Login
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box display="flex" flexDirection="column" alignItems="center">
+        {user ? (
+          <Stack spacing={2} alignItems="center">
+            <Typography variant="h6" sx={{ color: '#BC1456', fontWeight: 700 }}>
+              Welcome, {user.email}
+            </Typography>
+            <Button onClick={handleLogout}>
+              Logout
             </Button>
-            <Button variant="outlined" onClick={handleRegister}>
-              Register
-            </Button>
-          </Box>
-        </Box>
-      )}
-      <Snackbar open={openSnackbar} autoHideDuration={6000} onClose={handleCloseSnackbar}>
-        <Alert onClose={handleCloseSnackbar} severity={snackbarSeverity} sx={{ width: '100%' }}>
-          {snackbarMessage}
-        </Alert>
-      </Snackbar>
-    </Box>
+          </Stack>
+        ) : (
+          <Stack spacing={2} alignItems="center">
+            <TextField
+              label="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              fullWidth
+            />
+            <TextField
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              fullWidth
+            />
+            <Stack direction="row" spacing={2}>
+              <Button variant="contained" onClick={handleLogin}>
+                Login
+              </Button>
+              <Button variant="contained" onClick={handleRegister}>
+                Register
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+        <Snackbar open={openSnackbar} autoHideDuration={6000} onClose={handleCloseSnackbar}>
+          <Alert onClose={handleCloseSnackbar} severity={snackbarSeverity} sx={{ width: '100%' }}>
+            {snackbarMessage}
+          </Alert>
+        </Snackbar>
+      </Box>
+    </ThemeProvider>
   );
 }
