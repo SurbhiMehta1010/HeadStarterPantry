@@ -31,11 +31,13 @@ const theme = createTheme({
         root: {
           '& .MuiOutlinedInput-root': {
             borderRadius: '20px',
-            border: '2px solid #D14469',
             '& fieldset': {
               borderColor: '#D14469',
             },
             '&:hover fieldset': {
+              borderColor: '#D14469',
+            },
+            '&.Mui-focused fieldset': {
               borderColor: '#D14469',
             },
           },

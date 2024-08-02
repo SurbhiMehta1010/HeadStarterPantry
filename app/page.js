@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box, Stack, Typography, Button, Modal, TextField, IconButton, Snackbar, Alert, InputBase, Paper, Grid
 } from '@mui/material';
@@ -36,11 +36,14 @@ const theme = createTheme({
         root: {
           '& .MuiOutlinedInput-root': {
             borderRadius: '20px',
-            border: '2px solid #D14469',
+            borderColor: '#D14469',
             '& fieldset': {
               borderColor: '#D14469',
             },
             '&:hover fieldset': {
+              borderColor: '#D14469',
+            },
+            '&.Mui-focused fieldset': {
               borderColor: '#D14469',
             },
           },
@@ -206,7 +209,7 @@ export default function Page() {
             <Auth onUserChange={(user) => user && loadInventory(user.uid)} />
           </Box>
         ) : (
-          <Box display="flex" flexDirection="column" alignItems="center" gap={2} p={2} width="90%">
+          <Box display="flex" flexDirection="column" alignItems="center" gap={2} p={2} width="90%" height="100%">
             <Stack direction="row" spacing={2}>
               <Button variant="contained" onClick={handleSignOut}>
                 Sign Out
@@ -308,6 +311,8 @@ export default function Page() {
             <Box
               sx={{
                 width: '100%',
+                flex: 1, // Make the inventory box expand to fill the available space
+                overflowY: 'auto', // Enable vertical scrolling
                 padding: 2,
                 backgroundColor: '#FFD1DC',
                 border: '2px solid #D14469',
