@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box, Stack, Typography, Button, Modal, TextField, IconButton, Snackbar, Alert, InputBase, Paper, Grid
 } from '@mui/material';
-import { firestore, auth } from '@/firebase';
+import { firestore, auth, storage } from '@/firebase';
 import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Add, Remove } from '@mui/icons-material';
+import { Camera } from 'react-camera-pro';
 import Auth from './auth';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
@@ -36,7 +38,6 @@ const theme = createTheme({
         root: {
           '& .MuiOutlinedInput-root': {
             borderRadius: '20px',
-            borderColor: '#D14469',
             '& fieldset': {
               borderColor: '#D14469',
             },
@@ -93,6 +94,7 @@ export default function Page() {
   const [localInventory, setLocalInventory] = useState([]);
   const [openAdd, setOpenAdd] = useState(false);
   const [openRemove, setOpenRemove] = useState(false);
+  const [openScan, setOpenScan] = useState(false);
   const [itemName, setItemName] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [user, setUser] = useState(null);
@@ -102,6 +104,7 @@ export default function Page() {
   const [searchTerm, setSearchTerm] = useState('');
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('name');
+  const cameraRef = useRef(null);
 
   useEffect(() => {
     onAuthStateChanged(auth, (currentUser) => {
@@ -157,6 +160,37 @@ export default function Page() {
 
   const handleOpenRemove = () => setOpenRemove(true);
   const handleCloseRemove = () => setOpenRemove(false);
+
+  const handleOpenScan = () => setOpenScan(true);
+  const handleCloseScan = () => setOpenScan(false);
+
+  const handleCapture = async () => {
+    if (cameraRef.current) {
+      try {
+        const imageSrc = cameraRef.current.takePhoto();
+        console.log('Captured Image:', imageSrc);
+
+        const storageRef = ref(storage, `images/${Date.now()}.jpg`);
+        await uploadString(storageRef, imageSrc, 'data_url');
+        const downloadURL = await getDownloadURL(storageRef);
+
+        console.log('Image uploaded to Firebase Storage:', downloadURL);
+        setSnackbarMessage('Image uploaded successfully!');
+        setSnackbarSeverity('success');
+        setOpenSnackbar(true);
+      } catch (error) {
+        console.error('Error capturing or uploading image:', error);
+        setSnackbarMessage('Error capturing or uploading image. Please try again.');
+        setSnackbarSeverity('error');
+        setOpenSnackbar(true);
+      }
+    } else {
+      console.error('No camera device accessible.');
+      setSnackbarMessage('No camera device accessible. Please connect your camera or try a different browser.');
+      setSnackbarSeverity('error');
+      setOpenSnackbar(true);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -222,6 +256,9 @@ export default function Page() {
               </Button>
               <Button variant="contained" onClick={syncInventory}>
                 Save Changes
+              </Button>
+              <Button variant="contained" onClick={handleOpenScan}>
+                Scan Items
               </Button>
             </Stack>
             <Modal
@@ -308,11 +345,28 @@ export default function Page() {
                 </Button>
               </Box>
             </Modal>
+            <Modal
+              open={openScan}
+              onClose={handleCloseScan}
+              aria-labelledby="modal-modal-title"
+              aria-describedby="modal-modal-description"
+            >
+              <Box sx={modalStyle}>
+                <Typography id="modal-modal-title" variant="h6" sx={{ color: '#BC1456', fontWeight: 700 }} component="h2">
+                  Scan Item
+                </Typography>
+                <Camera ref={cameraRef} facingMode="environment" aspectRatio={16 / 9} />
+                <Box display="flex" justifyContent="flex-end" gap={1} mt={2}>
+                  <Button onClick={handleCloseScan}>Cancel</Button>
+                  <Button variant="contained" onClick={handleCapture}>Capture</Button>
+                </Box>
+              </Box>
+            </Modal>
             <Box
               sx={{
                 width: '100%',
-                flex: 1, // Make the inventory box expand to fill the available space
-                overflowY: 'auto', // Enable vertical scrolling
+                flex: 1,
+                overflowY: 'auto',
                 padding: 2,
                 backgroundColor: '#FFD1DC',
                 border: '2px solid #D14469',
