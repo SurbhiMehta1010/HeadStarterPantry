@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Box, Stack, Typography, Button, Modal, TextField, IconButton, Snackbar, Alert, InputBase, Paper
+  Box, Stack, Typography, Button, Modal, TextField, IconButton, Snackbar, Alert, InputBase, Paper, Grid
 } from '@mui/material';
 import { firestore, auth } from '@/firebase';
-import { collection, doc, getDocs, query, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Add, Remove } from '@mui/icons-material';
 import Auth from './auth';
@@ -61,26 +61,33 @@ const modalStyle = {
   p: 4,
   display: 'flex',
   flexDirection: 'column',
-  gap: 3,
+  gap: 2,
   borderRadius: '20px',
   border: '2px solid #D14469',
 };
 
 const itemBoxStyle = {
-  width: '100%',
   padding: 2,
   backgroundColor: '#FFD1DC',
   border: '2px solid #D14469',
   borderRadius: '20px',
   boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)',
   display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+};
+
+const itemContentStyle = {
+  display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  marginBottom: 2,
+  width: '100%',
+  gap: 1,
 };
 
 export default function Page() {
   const [inventory, setInventory] = useState([]);
+  const [localInventory, setLocalInventory] = useState([]);
   const [openAdd, setOpenAdd] = useState(false);
   const [openRemove, setOpenRemove] = useState(false);
   const [itemName, setItemName] = useState('');
@@ -97,49 +104,49 @@ export default function Page() {
     onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        updateInventory(currentUser.uid);
+        loadInventory(currentUser.uid);
       }
     });
   }, []);
 
-  const updateInventory = async (userId) => {
-    const snapshot = query(collection(firestore, `users/${userId}/inventory`));
-    const docs = await getDocs(snapshot);
+  const loadInventory = useCallback(async (userId) => {
+    const snapshot = await getDocs(collection(firestore, `users/${userId}/inventory`));
     const inventoryList = [];
-    docs.forEach((doc) => {
+    snapshot.forEach((doc) => {
       inventoryList.push({ name: doc.id, ...doc.data() });
     });
     setInventory(inventoryList);
-  };
+    setLocalInventory(inventoryList);
+  }, []);
 
-  const addItem = async (item, qty) => {
+  const syncInventory = useCallback(async () => {
     if (!user) return;
-    const normalizedItem = item.toLowerCase();
-    const docRef = doc(collection(firestore, `users/${user.uid}/inventory`), normalizedItem);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const { quantity } = docSnap.data();
-      await setDoc(docRef, { quantity: quantity + qty });
-    } else {
-      await setDoc(docRef, { quantity: qty });
-    }
-    await updateInventory(user.uid);
-  };
+    const batch = writeBatch(firestore);
+    localInventory.forEach(item => {
+      const docRef = doc(collection(firestore, `users/${user.uid}/inventory`), item.name);
+      batch.set(docRef, { quantity: item.quantity });
+    });
+    await batch.commit();
+    setSnackbarMessage('Inventory synced successfully!');
+    setSnackbarSeverity('success');
+    setOpenSnackbar(true);
+  }, [localInventory, user]);
 
-  const removeItem = async (item, qty) => {
-    if (!user) return;
-    const normalizedItem = item.toLowerCase();
-    const docRef = doc(collection(firestore, `users/${user.uid}/inventory`), normalizedItem);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      const { quantity } = docSnap.data();
-      if (quantity <= qty) {
-        await deleteDoc(docRef);
-      } else {
-        await setDoc(docRef, { quantity: quantity - qty });
+  const addItem = (item, qty) => {
+    setLocalInventory((prevInventory) => {
+      const updatedInventory = prevInventory.map(i => i.name === item ? { ...i, quantity: i.quantity + qty } : i);
+      if (!updatedInventory.find(i => i.name === item)) {
+        updatedInventory.push({ name: item, quantity: qty });
       }
-    }
-    await updateInventory(user.uid);
+      return updatedInventory;
+    });
+  };
+
+  const removeItem = (item, qty) => {
+    setLocalInventory((prevInventory) => {
+      const updatedInventory = prevInventory.map(i => i.name === item ? { ...i, quantity: Math.max(0, i.quantity - qty) } : i);
+      return updatedInventory;
+    });
   };
 
   const handleOpenAdd = () => setOpenAdd(true);
@@ -177,7 +184,7 @@ export default function Page() {
     setOrderBy(property);
   };
 
-  const sortedFilteredInventory = inventory
+  const sortedFilteredInventory = localInventory
     .filter((item) => item.name.includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
       if (order === 'asc') {
@@ -196,10 +203,10 @@ export default function Page() {
             <Typography variant="h2" sx={{ color: '#BC1456', fontWeight: 700 }} mb={2} textAlign="center">
               Welcome to Pantry
             </Typography>
-            <Auth onUserChange={(user) => user && updateInventory(user.uid)} />
+            <Auth onUserChange={(user) => user && loadInventory(user.uid)} />
           </Box>
         ) : (
-          <Box display="flex" flexDirection="column" alignItems="center" gap={2} p={2}>
+          <Box display="flex" flexDirection="column" alignItems="center" gap={2} p={2} width="90%">
             <Stack direction="row" spacing={2}>
               <Button variant="contained" onClick={handleSignOut}>
                 Sign Out
@@ -209,6 +216,9 @@ export default function Page() {
               </Button>
               <Button variant="contained" onClick={handleOpenRemove}>
                 Remove Item
+              </Button>
+              <Button variant="contained" onClick={syncInventory}>
+                Save Changes
               </Button>
             </Stack>
             <Modal
@@ -221,7 +231,7 @@ export default function Page() {
                 <Typography id="modal-modal-title" variant="h6" sx={{ color: '#BC1456', fontWeight: 700 }} component="h2">
                   Add Item
                 </Typography>
-                <Stack width="100%" direction="row" spacing={2}>
+                <Stack direction="row" spacing={2}>
                   <TextField
                     id="outlined-basic"
                     label="Item"
@@ -238,18 +248,19 @@ export default function Page() {
                     value={quantity}
                     onChange={(e) => setQuantity(parseInt(e.target.value))}
                   />
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      addItem(itemName, quantity);
-                      setItemName('');
-                      setQuantity(1);
-                      handleCloseAdd();
-                    }}
-                  >
-                    Add
-                  </Button>
                 </Stack>
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    addItem(itemName, quantity);
+                    setItemName('');
+                    setQuantity(1);
+                    handleCloseAdd();
+                  }}
+                  sx={{ mt: 2 }}
+                >
+                  Add
+                </Button>
               </Box>
             </Modal>
             <Modal
@@ -262,7 +273,7 @@ export default function Page() {
                 <Typography id="modal-modal-title" variant="h6" sx={{ color: '#BC1456', fontWeight: 700 }} component="h2">
                   Remove Item
                 </Typography>
-                <Stack width="100%" direction="row" spacing={2}>
+                <Stack direction="row" spacing={2}>
                   <TextField
                     id="outlined-basic"
                     label="Item"
@@ -279,24 +290,24 @@ export default function Page() {
                     value={quantity}
                     onChange={(e) => setQuantity(parseInt(e.target.value))}
                   />
-                  <Button
-                    variant="contained"
-                    onClick={() => {
-                      removeItem(itemName, quantity);
-                      setItemName('');
-                      setQuantity(1);
-                      handleCloseRemove();
-                    }}
-                  >
-                    Remove
-                  </Button>
                 </Stack>
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    removeItem(itemName, quantity);
+                    setItemName('');
+                    setQuantity(1);
+                    handleCloseRemove();
+                  }}
+                  sx={{ mt: 2 }}
+                >
+                  Remove
+                </Button>
               </Box>
             </Modal>
             <Box
               sx={{
-                width: '80%',
-                maxWidth: 800,
+                width: '100%',
                 padding: 2,
                 backgroundColor: '#FFD1DC',
                 border: '2px solid #D14469',
@@ -323,24 +334,28 @@ export default function Page() {
                   boxShadow: '0 0 5px rgba(0,0,0,0.1)',
                 }}
               />
-              <Box sx={{ width: '100%' }}>
+              <Grid container spacing={2}>
                 {sortedFilteredInventory.map(({ name, quantity }) => (
-                  <Paper key={name} sx={itemBoxStyle}>
-                    <Typography sx={{ fontFamily: 'Raleway, sans-serif' }}>
-                      {name.charAt(0).toUpperCase() + name.slice(1)}
-                    </Typography>
-                    <Typography sx={{ fontFamily: 'Raleway, sans-serif' }}>{quantity}</Typography>
-                    <Box>
-                      <IconButton onClick={() => removeItem(name, 1)}>
-                        <Remove sx={{ color: '#BC1456' }} />
-                      </IconButton>
-                      <IconButton onClick={() => addItem(name, 1)}>
-                        <Add sx={{ color: '#BC1456' }} />
-                      </IconButton>
-                    </Box>
-                  </Paper>
+                  <Grid item xs={12} sm={6} md={4} key={name}>
+                    <Paper sx={{ ...itemBoxStyle, minHeight: '100px' }}>
+                      <Box sx={itemContentStyle}>
+                        <Typography sx={{ fontFamily: 'Raleway, sans-serif', wordBreak: 'break-word' }}>
+                          {name.charAt(0).toUpperCase() + name.slice(1)}
+                        </Typography>
+                        <Box display="flex" alignItems="center">
+                          <IconButton onClick={() => removeItem(name, 1)} size="small">
+                            <Remove sx={{ color: '#BC1456' }} />
+                          </IconButton>
+                          <Typography sx={{ mx: 1, fontFamily: 'Raleway, sans-serif' }}>{quantity}</Typography>
+                          <IconButton onClick={() => addItem(name, 1)} size="small">
+                            <Add sx={{ color: '#BC1456' }} />
+                          </IconButton>
+                        </Box>
+                      </Box>
+                    </Paper>
+                  </Grid>
                 ))}
-              </Box>
+              </Grid>
             </Box>
           </Box>
         )}
