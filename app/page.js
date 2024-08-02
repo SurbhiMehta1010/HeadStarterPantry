@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Box, Stack, Typography, Button, Modal, TextField, IconButton, Snackbar, Alert, InputBase, Paper, Grid
+  Box, Stack, Typography, Button, Modal, TextField, IconButton, Snackbar, Alert, InputBase, Paper, Grid, CircularProgress
 } from '@mui/material';
 import { firestore, auth, storage } from '@/firebase';
 import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
@@ -10,6 +10,7 @@ import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Add, Remove } from '@mui/icons-material';
 import { Camera } from 'react-camera-pro';
+import * as mobilenet from '@tensorflow-models/mobilenet';
 import Auth from './auth';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
@@ -59,7 +60,8 @@ const modalStyle = {
   top: '50%',
   left: '50%',
   transform: 'translate(-50%, -50%)',
-  width: 400,
+  width: '90%',
+  maxWidth: 400,
   bgcolor: 'white',
   boxShadow: 24,
   p: 4,
@@ -104,6 +106,7 @@ export default function Page() {
   const [searchTerm, setSearchTerm] = useState('');
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('name');
+  const [loading, setLoading] = useState(false);
   const cameraRef = useRef(null);
 
   useEffect(() => {
@@ -130,7 +133,11 @@ export default function Page() {
     const batch = writeBatch(firestore);
     localInventory.forEach(item => {
       const docRef = doc(collection(firestore, `users/${user.uid}/inventory`), item.name);
-      batch.set(docRef, { quantity: item.quantity });
+      if (item.quantity > 0) {
+        batch.set(docRef, { quantity: item.quantity });
+      } else {
+        batch.delete(docRef);
+      }
     });
     await batch.commit();
     setSnackbarMessage('Inventory synced successfully!');
@@ -151,7 +158,7 @@ export default function Page() {
   const removeItem = (item, qty) => {
     setLocalInventory((prevInventory) => {
       const updatedInventory = prevInventory.map(i => i.name === item ? { ...i, quantity: Math.max(0, i.quantity - qty) } : i);
-      return updatedInventory;
+      return updatedInventory.filter(i => i.quantity > 0);
     });
   };
 
@@ -175,14 +182,27 @@ export default function Page() {
         const downloadURL = await getDownloadURL(storageRef);
 
         console.log('Image uploaded to Firebase Storage:', downloadURL);
-        setSnackbarMessage('Image uploaded successfully!');
-        setSnackbarSeverity('success');
-        setOpenSnackbar(true);
+
+        // Load and classify image
+        setLoading(true);
+        const model = await mobilenet.load();
+        const img = new Image();
+        img.src = imageSrc;
+        img.onload = async () => {
+          const predictions = await model.classify(img);
+          const predictedItem = predictions[0]?.className || 'Unknown';
+          setLoading(false);
+          setSnackbarMessage(`Image classified as: ${predictedItem}`);
+          setSnackbarSeverity('success');
+          setOpenSnackbar(true);
+          addItem(predictedItem.toLowerCase(), 1);  // Add the classified item to the inventory
+        };
       } catch (error) {
         console.error('Error capturing or uploading image:', error);
         setSnackbarMessage('Error capturing or uploading image. Please try again.');
         setSnackbarSeverity('error');
         setOpenSnackbar(true);
+        setLoading(false);
       }
     } else {
       console.error('No camera device accessible.');
@@ -358,7 +378,9 @@ export default function Page() {
                 <Camera ref={cameraRef} facingMode="environment" aspectRatio={16 / 9} />
                 <Box display="flex" justifyContent="flex-end" gap={1} mt={2}>
                   <Button onClick={handleCloseScan}>Cancel</Button>
-                  <Button variant="contained" onClick={handleCapture}>Capture</Button>
+                  <Button variant="contained" onClick={handleCapture} disabled={loading}>
+                    {loading ? <CircularProgress size={24} /> : 'Capture'}
+                  </Button>
                 </Box>
               </Box>
             </Modal>
