@@ -198,7 +198,7 @@ export default function Page() {
     setLocalInventory((prevInventory) => {
       return prevInventory.map(i => 
         i.name === item ? { ...i, quantity: Math.max(0, i.quantity - qty) } : i
-      ).filter(i => i.quantity > 0);
+      );
     });
   };
 
