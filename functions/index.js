@@ -1,4 +1,4 @@
-// Path: app/page.js
+// Path: pages/index.js
 
 'use client';
 
@@ -7,7 +7,7 @@ import {
   Box, Stack, Typography, Button, Modal, TextField, IconButton, Snackbar, Alert, InputBase, Paper, Grid
 } from '@mui/material';
 import { firestore, auth, storage } from '@/firebase';
-import { collection, getDocs, writeBatch, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, deleteDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { Add, Remove, CameraAlt as CameraAltIcon } from '@mui/icons-material';
@@ -15,11 +15,8 @@ import Auth from './auth';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
 import Webcam from 'react-webcam';
-import * as tf from '@tensorflow/tfjs';
-import '@tensorflow/tfjs-backend-webgl';
 import * as mobilenet from '@tensorflow-models/mobilenet';
-import { v4 as uuidv4 } from 'uuid';
-import axios from 'axios';
+import '@tensorflow/tfjs';
 
 const theme = createTheme({
   typography: {
@@ -97,14 +94,6 @@ const itemContentStyle = {
   gap: 1,
 };
 
-const FOOD_ITEMS = [
-  'apple', 'banana', 'orange', 'bread', 'carrot', 'pizza', 'burger', 'cake', 'sandwich', 'salad', 'egg', 'chicken',
-  // Add more known food items here...
-];
-
-const openRouterAPIKey = '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';
-const openRouterModelURL = 'https://openrouter.ai/api/v1/chat/completions';
-
 export default function Page() {
   const [inventory, setInventory] = useState([]);
   const [localInventory, setLocalInventory] = useState([]);
@@ -122,12 +111,8 @@ export default function Page() {
   const [orderBy, setOrderBy] = useState('name');
   const [capturedImage, setCapturedImage] = useState(null);
   const [classificationResult, setClassificationResult] = useState(null);
-  const [isModelLoading, setIsModelLoading] = useState(true);
-  const [modelError, setModelError] = useState(null);
-  const [recommendedRecipes, setRecommendedRecipes] = useState([]);
 
   const webcamRef = useRef(null);
-  const modelRef = useRef(null);
 
   useEffect(() => {
     onAuthStateChanged(auth, (currentUser) => {
@@ -136,24 +121,7 @@ export default function Page() {
         loadInventory(currentUser.uid);
       }
     });
-
-    // Load the MobileNet model
-    loadModel();
   }, []);
-
-  const loadModel = async () => {
-    setIsModelLoading(true);
-    try {
-      const model = await mobilenet.load();
-      modelRef.current = model;
-      setIsModelLoading(false);
-      console.log('Model loaded successfully');
-    } catch (error) {
-      console.error('Failed to load model:', error);
-      setModelError('Model not found or failed to load');
-      setIsModelLoading(false);
-    }
-  };
 
   const loadInventory = useCallback(async (userId) => {
     const snapshot = await getDocs(collection(firestore, `users/${userId}/inventory`));
@@ -185,20 +153,18 @@ export default function Page() {
 
   const addItem = (item, qty) => {
     setLocalInventory((prevInventory) => {
-      const existingItem = prevInventory.find(i => i.name === item);
-      if (existingItem) {
-        return prevInventory.map(i => i.name === item ? { ...i, quantity: i.quantity + qty } : i);
-      } else {
-        return [...prevInventory, { name: item, quantity: qty }];
+      const updatedInventory = prevInventory.map(i => i.name === item ? { ...i, quantity: i.quantity + qty } : i);
+      if (!updatedInventory.find(i => i.name === item)) {
+        updatedInventory.push({ name: item, quantity: qty });
       }
+      return updatedInventory;
     });
   };
 
   const removeItem = (item, qty) => {
     setLocalInventory((prevInventory) => {
-      return prevInventory.map(i => 
-        i.name === item ? { ...i, quantity: Math.max(0, i.quantity - qty) } : i
-      ).filter(i => i.quantity > 0);
+      const updatedInventory = prevInventory.map(i => i.name === item ? { ...i, quantity: Math.max(0, i.quantity - qty) } : i);
+      return updatedInventory.filter(i => i.quantity > 0);
     });
   };
 
@@ -241,13 +207,6 @@ export default function Page() {
   };
 
   const handleCapture = async () => {
-    if (!modelRef.current) {
-      setSnackbarMessage('Model not loaded yet. Please wait.');
-      setSnackbarSeverity('error');
-      setOpenSnackbar(true);
-      return;
-    }
-
     if (webcamRef.current) {
       try {
         const imageSrc = webcamRef.current.getScreenshot();
@@ -264,8 +223,8 @@ export default function Page() {
 
         console.log('Image uploaded to Firebase Storage:', downloadURL);
 
-        // Classify the image using MobileNet
-        const classificationResult = await classifyImageMobileNet(imageSrc);
+        // Classify the image using TensorFlow.js
+        const classificationResult = await classifyImageTensorFlow(imageSrc);
         console.log('Classification Result:', classificationResult);
         setClassificationResult(classificationResult);
 
@@ -289,32 +248,18 @@ export default function Page() {
     }
   };
 
-  const classifyImageMobileNet = async (imageSrc) => {
-    const image = new Image();
-    image.src = imageSrc;
+  const classifyImageTensorFlow = async (imageSrc) => {
+    const img = new Image();
+    img.src = imageSrc;
+    await img.decode();
 
-    return new Promise((resolve, reject) => {
-      image.onload = async () => {
-        const tensor = tf.browser.fromPixels(image)
-          .resizeNearestNeighbor([224, 224])
-          .toFloat()
-          .expandDims()
-          .div(tf.scalar(127.5))
-          .sub(tf.scalar(1));
+    const model = await mobilenet.load();
+    const predictions = await model.classify(img);
 
-        try {
-          const predictions = await modelRef.current.classify(tensor);
-          const foodPredictions = predictions.filter(prediction => 
-            FOOD_ITEMS.some(food => prediction.className.toLowerCase().includes(food))
-          );
-          resolve(foodPredictions.length > 0 ? foodPredictions[0] : { className: 'non-food item', probability: 1 });
-        } catch (error) {
-          reject(error);
-        }
-      };
-
-      image.onerror = (error) => reject(error);
-    });
+    if (predictions.length > 0) {
+      return { name: predictions[0].className, value: predictions[0].probability };
+    }
+    return { name: 'Unknown', value: 0 };
   };
 
   const storeClassificationResult = async (imageName, classificationResult) => {
@@ -323,56 +268,12 @@ export default function Page() {
     const docRef = doc(collection(firestore, `users/${user.uid}/classified_images`), uuidv4());
     await setDoc(docRef, {
       imageName,
-      classificationResult: classificationResult || { className: 'non-food item', probability: 1 }
+      classificationResult,
     });
   };
 
-  const getRecipeRecommendations = async (inventoryItems) => {
-    const prompt = `Given the following ingredients: ${inventoryItems.join(', ')}. Suggest some healthy recipes.`;
-
-    try {
-      const response = await fetch(openRouterModelURL, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${openRouterAPIKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "openai/gpt-3.5-turbo",
-          messages: [
-            { role: "user", content: prompt }
-          ],
-        }),
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        return data.choices[0].message.content.trim().split('\n');
-      } else {
-        console.error('Error getting recipe recommendations:', data);
-        throw new Error(data.error.message || 'Failed to get recipe recommendations');
-      }
-    } catch (error) {
-      console.error('Error getting recipe recommendations:', error);
-      throw error;
-    }
-  };
-
-  const handleGetRecipes = async () => {
-    const inventoryItems = localInventory.map(item => item.name);
-    try {
-      const recipes = await getRecipeRecommendations(inventoryItems);
-      setRecommendedRecipes(recipes);
-    } catch (error) {
-      console.error('Error getting recipes:', error);
-      setSnackbarMessage('Failed to get recipe recommendations');
-      setSnackbarSeverity('error');
-      setOpenSnackbar(true);
-    }
-  };
-
   const sortedFilteredInventory = localInventory
-    .filter((item) => item.name.toLowerCase().includes(searchTerm.toLowerCase()) && !item.imageName)
+    .filter((item) => item.name.includes(searchTerm.toLowerCase()) && !item.imageName)
     .sort((a, b) => {
       if (order === 'asc') {
         return a[orderBy] > b[orderBy] ? 1 : -1;
@@ -409,9 +310,6 @@ export default function Page() {
               </Button>
               <Button variant="contained" startIcon={<CameraAltIcon />} onClick={handleOpenScan}>
                 Scan Items
-              </Button>
-              <Button variant="contained" onClick={handleGetRecipes}>
-                Get Recipes
               </Button>
             </Stack>
             <Modal
@@ -518,15 +416,11 @@ export default function Page() {
                   <Button onClick={handleCloseScan}>Cancel</Button>
                   <Button onClick={handleCapture} variant="contained">Capture</Button>
                 </Box>
-                {isModelLoading ? (
-                  <Typography>Loading model, please wait...</Typography>
-                ) : (
-                  classificationResult && (
-                    <Box mt={2}>
-                      <Typography variant="h6">Classification Result:</Typography>
-                      <Typography>{classificationResult.className}: {(classificationResult.probability * 100).toFixed(2)}%</Typography>
-                    </Box>
-                  )
+                {classificationResult && (
+                  <Box mt={2}>
+                    <Typography variant="h6">Classification Result:</Typography>
+                    <Typography>{classificationResult.name}: {classificationResult.value.toFixed(2)}</Typography>
+                  </Box>
                 )}
               </Box>
             </Modal>
@@ -583,36 +477,6 @@ export default function Page() {
                   </Grid>
                 ))}
               </Grid>
-              <Box
-                sx={{
-                  width: '100%',
-                  padding: 2,
-                  backgroundColor: '#FFD1DC',
-                  border: '2px solid #D14469',
-                  borderRadius: '20px',
-                  boxShadow: '0 0 10px rgba(0, 0, 0, 0.1)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 2,
-                  marginTop: 2,
-                }}
-              >
-                <Typography variant="h5" sx={{ color: '#BC1456', fontWeight: 700 }}>
-                  Recommended Recipes
-                </Typography>
-                {recommendedRecipes.length > 0 ? (
-                  recommendedRecipes.map((recipe, index) => (
-                    <Typography key={index} sx={{ fontFamily: 'Raleway, sans-serif' }}>
-                      {recipe}
-                    </Typography>
-                  ))
-                ) : (
-                  <Typography sx={{ fontFamily: 'Raleway, sans-serif' }}>
-                    No recipes to display.
-                  </Typography>
-                )}
-              </Box>
             </Box>
           </Box>
         )}
