@@ -1,19 +1,18 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Box, Stack, Typography, Button, Modal, TextField, IconButton, Snackbar, Alert, InputBase, Paper, Grid, CircularProgress
+  Box, Stack, Typography, Button, Modal, TextField, IconButton, Snackbar, Alert, InputBase, Paper, Grid
 } from '@mui/material';
 import { firestore, auth, storage } from '@/firebase';
-import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { Add, Remove } from '@mui/icons-material';
-import { Camera } from 'react-camera-pro';
-import * as mobilenet from '@tensorflow-models/mobilenet';
+import { Add, Remove, CameraAlt as CameraAltIcon } from '@mui/icons-material';
 import Auth from './auth';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
+import Webcam from 'react-webcam';
 
 const theme = createTheme({
   typography: {
@@ -39,6 +38,7 @@ const theme = createTheme({
         root: {
           '& .MuiOutlinedInput-root': {
             borderRadius: '20px',
+            borderColor: '#D14469',
             '& fieldset': {
               borderColor: '#D14469',
             },
@@ -60,8 +60,7 @@ const modalStyle = {
   top: '50%',
   left: '50%',
   transform: 'translate(-50%, -50%)',
-  width: '90%',
-  maxWidth: 400,
+  width: 400,
   bgcolor: 'white',
   boxShadow: 24,
   p: 4,
@@ -106,8 +105,9 @@ export default function Page() {
   const [searchTerm, setSearchTerm] = useState('');
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState('name');
-  const [loading, setLoading] = useState(false);
-  const cameraRef = useRef(null);
+  const [capturedImage, setCapturedImage] = useState(null);
+
+  const webcamRef = useRef(null);
 
   useEffect(() => {
     onAuthStateChanged(auth, (currentUser) => {
@@ -140,6 +140,7 @@ export default function Page() {
       }
     });
     await batch.commit();
+    setInventory(localInventory.filter(item => item.quantity > 0));
     setSnackbarMessage('Inventory synced successfully!');
     setSnackbarSeverity('success');
     setOpenSnackbar(true);
@@ -171,47 +172,6 @@ export default function Page() {
   const handleOpenScan = () => setOpenScan(true);
   const handleCloseScan = () => setOpenScan(false);
 
-  const handleCapture = async () => {
-    if (cameraRef.current) {
-      try {
-        const imageSrc = cameraRef.current.takePhoto();
-        console.log('Captured Image:', imageSrc);
-
-        const storageRef = ref(storage, `images/${Date.now()}.jpg`);
-        await uploadString(storageRef, imageSrc, 'data_url');
-        const downloadURL = await getDownloadURL(storageRef);
-
-        console.log('Image uploaded to Firebase Storage:', downloadURL);
-
-        // Load and classify image
-        setLoading(true);
-        const model = await mobilenet.load();
-        const img = new Image();
-        img.src = imageSrc;
-        img.onload = async () => {
-          const predictions = await model.classify(img);
-          const predictedItem = predictions[0]?.className || 'Unknown';
-          setLoading(false);
-          setSnackbarMessage(`Image classified as: ${predictedItem}`);
-          setSnackbarSeverity('success');
-          setOpenSnackbar(true);
-          addItem(predictedItem.toLowerCase(), 1);  // Add the classified item to the inventory
-        };
-      } catch (error) {
-        console.error('Error capturing or uploading image:', error);
-        setSnackbarMessage('Error capturing or uploading image. Please try again.');
-        setSnackbarSeverity('error');
-        setOpenSnackbar(true);
-        setLoading(false);
-      }
-    } else {
-      console.error('No camera device accessible.');
-      setSnackbarMessage('No camera device accessible. Please connect your camera or try a different browser.');
-      setSnackbarSeverity('error');
-      setOpenSnackbar(true);
-    }
-  };
-
   const handleSignOut = async () => {
     try {
       await signOut(auth);
@@ -239,6 +199,38 @@ export default function Page() {
     const isAscending = orderBy === property && order === 'asc';
     setOrder(isAscending ? 'desc' : 'asc');
     setOrderBy(property);
+  };
+
+  const handleCapture = async () => {
+    if (webcamRef.current) {
+      try {
+        const imageSrc = webcamRef.current.getScreenshot();
+        if (!imageSrc) {
+          throw new Error('Unable to capture image');
+        }
+        setCapturedImage(imageSrc);
+        console.log('Captured Image:', imageSrc);
+
+        const storageRef = ref(storage, `images/${Date.now()}.jpg`);
+        await uploadString(storageRef, imageSrc, 'data_url');
+        const downloadURL = await getDownloadURL(storageRef);
+
+        console.log('Image uploaded to Firebase Storage:', downloadURL);
+        setSnackbarMessage('Image uploaded successfully!');
+        setSnackbarSeverity('success');
+        setOpenSnackbar(true);
+      } catch (error) {
+        console.error('Error capturing or uploading image:', error);
+        setSnackbarMessage(`Error capturing or uploading image: ${error.message}. Please try again.`);
+        setSnackbarSeverity('error');
+        setOpenSnackbar(true);
+      }
+    } else {
+      console.error('No camera device accessible.');
+      setSnackbarMessage('No camera device accessible. Please connect your camera or try a different browser.');
+      setSnackbarSeverity('error');
+      setOpenSnackbar(true);
+    }
   };
 
   const sortedFilteredInventory = localInventory
@@ -277,7 +269,7 @@ export default function Page() {
               <Button variant="contained" onClick={syncInventory}>
                 Save Changes
               </Button>
-              <Button variant="contained" onClick={handleOpenScan}>
+              <Button variant="contained" startIcon={<CameraAltIcon />} onClick={handleOpenScan}>
                 Scan Items
               </Button>
             </Stack>
@@ -368,19 +360,22 @@ export default function Page() {
             <Modal
               open={openScan}
               onClose={handleCloseScan}
-              aria-labelledby="modal-modal-title"
-              aria-describedby="modal-modal-description"
+              aria-labelledby="modal-scan-title"
+              aria-describedby="modal-scan-description"
             >
               <Box sx={modalStyle}>
-                <Typography id="modal-modal-title" variant="h6" sx={{ color: '#BC1456', fontWeight: 700 }} component="h2">
+                <Typography id="modal-scan-title" variant="h6" sx={{ color: '#BC1456', fontWeight: 700 }} component="h2">
                   Scan Item
                 </Typography>
-                <Camera ref={cameraRef} facingMode="environment" aspectRatio={16 / 9} />
-                <Box display="flex" justifyContent="flex-end" gap={1} mt={2}>
+                <Webcam
+                  audio={false}
+                  ref={webcamRef}
+                  screenshotFormat="image/jpeg"
+                  width="100%"
+                />
+                <Box display="flex" justifyContent="flex-end" gap={1}>
                   <Button onClick={handleCloseScan}>Cancel</Button>
-                  <Button variant="contained" onClick={handleCapture} disabled={loading}>
-                    {loading ? <CircularProgress size={24} /> : 'Capture'}
-                  </Button>
+                  <Button onClick={handleCapture} variant="contained">Capture</Button>
                 </Box>
               </Box>
             </Modal>
