@@ -102,7 +102,7 @@ const FOOD_ITEMS = [
   // Add more known food items here...
 ];
 
-const openRouterAPIKey = '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';
+const openRouterAPIKey = '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';
 const openRouterModelURL = 'https://openrouter.ai/api/v1/chat/completions';
 
 export default function Page() {
